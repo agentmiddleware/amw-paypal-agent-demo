@@ -1,0 +1,5 @@
+# Everything the demo and its tests need, from this repository and PyPI only.
+# Run from the repository root: pip install -r requirements.txt
+-e ./vendor/b2a_sdk[verify]
+-e ./vendor/openai-agent-middleware
+-e .[dev]

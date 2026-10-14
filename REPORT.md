@@ -1,10 +1,14 @@
 # REPORT: amw-paypal-agent-demo
 
+## Update 2026-10-14: no private dependency
+
+The AMW pin (`b082579d`, later `bc5b671f`) is gone. The demo now runs on `mini_gateway/`, a small MIT reference gateway written clean room for this demo from the vendored MIT SDKs' HTTP contract. The two SDKs are vendored unmodified under `vendor/` and install from there (`pip install -r requirements.txt`); nothing is fetched from GitHub, and `scripts/fetch_amw.sh` and `AMW_SOURCE_DIR` are removed. The original 18 tests pass against it with their assertions unchanged, 11 new gateway tests were added (29 total), and the offline demo passes all four scenes. Findings below that cite the AMW gateway describe the earlier pinned build.
+
 ## Summary
 
 The project is built, tested and committed locally on `main` (no remote, nothing pushed).
 
-An OpenAI tool calling agent buys an item through PayPal sandbox, with Agent Middleware (AMW, pinned to commit `b082579d`) in front of the payment. The agent gets a permit capped at the user's limit, AMW checks it before the PayPal tool runs, charges once per idempotency key, and signs a receipt that verifies offline.
+An OpenAI tool calling agent buys an item through PayPal sandbox, with a governed gateway in front of the payment (originally AMW pinned to `b082579d`, now the in-repo `mini_gateway`; see the update above). The agent gets a permit capped at the user's limit, AMW checks it before the PayPal tool runs, charges once per idempotency key, and signs a receipt that verifies offline.
 
 `demo.py` runs four scenes. All pass offline with the PayPal fake and the scripted LLM:
 
@@ -23,7 +27,7 @@ Not run:
 
 ### High
 
-**H1. The AMW repository root at `b082579d` is not pip installable.**
+**H1. Resolved by removal: the AMW repository root at `b082579d` is not pip installable.** The pin no longer exists; see the update at the top.
 
 * `pip install git+https://github.com/agentmiddleware/agent-middleware-api@b082579d` fails with a setuptools "Multiple top-level packages discovered in a flat-layout" error. The root `pyproject.toml` has no `[build-system]` and no package list. I verified this with uv against GitHub.
 * What I did instead:
@@ -123,5 +127,5 @@ Other checks:
 1. Is the sandbox card payment source acceptable for judging, or should live mode instead print an approval link and wait for a human to approve the order? Either way, someone has to run it once with real sandbox credentials.
 2. Should the checkout price be fixed per merchant registration (current design), or does the demo need a price set per call? Per call pricing needs AMW quotes or action permits and is a bigger change.
 3. Which OpenAI model should be the default? `gpt-4.1-mini` is a guess.
-4. Should the pin move to the full 40 character SHA (`b082579d4e15e21bab5a3bc65a10464817927ded`)? The short form works with uv today; pip resolution of short SHAs was not tested.
+4. Resolved: there is no pin any more.
 5. Docker was not run (Docker is not installed here). Please run `docker compose up --build demo` on a machine that has it.

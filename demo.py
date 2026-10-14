@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Four scenes: an LLM agent pays through PayPal behind AMW.
+"""Four scenes: an LLM agent pays through PayPal behind a governed gateway.
 
 1. Happy path: permit capped at the price, one checkout, one signed receipt.
 2. Lost response: the gateway captures, the response times out, the agent
    retries the same tool call. Same receipt, at most one PayPal capture.
-3. Over budget: the permit cap is below the price. AMW denies before the tool
+3. Over budget: the permit cap is below the price. The gateway denies before the tool
    runs, so PayPal is never called.
 4. Offline verification: the receipt from scene 1 is checked against the
    published key set from files on disk, after the gateway has shut down.
@@ -151,9 +151,9 @@ async def run(args: argparse.Namespace) -> dict:
         scene("Scene 2: response lost after capture, then retry")
         before = demo.captures()
         creds2, retried = await demo.checkout("agent-retry", price, lose_response=True)
-        say("  First attempt: AMW charged, PayPal captured, receipt written,")
+        say("  First attempt: gateway charged, PayPal captured, receipt written,")
         say("  then the response timed out before it reached the agent.")
-        say("  The agent retried the same tool call (same AMW key).")
+        say("  The agent retried the same tool call (same idempotency key).")
         show(retried)
         lost_receipt_id = demo.lossy.lost[0]["result"]["receipt"]["receipt_id"]
         debits = await demo.debits(creds2)
@@ -161,11 +161,11 @@ async def run(args: argparse.Namespace) -> dict:
         say(f"  receipt in the lost response:  {lost_receipt_id}")
         say(f"  receipt returned on retry:     {retried.receipt.receipt_id}")
         say(f"  PayPal captures for this checkout: {new_captures}")
-        say(f"  AMW wallet debits for this checkout: {debits}")
+        say(f"  Wallet debits for this checkout: {debits}")
         require(retried.status == "captured" and retried.attempts == 2, "retry did not recover")
         require(lost_receipt_id == retried.receipt.receipt_id, "retry returned a different receipt")
         require(new_captures == 1, f"expected one PayPal capture, saw {new_captures}")
-        require(debits == 1, "a retry produced a second AMW debit")
+        require(debits == 1, "a retry produced a second wallet debit")
         summary.update(retry_receipt_id=retried.receipt.receipt_id, retry_captures=new_captures, retry_debits=debits)
 
         scene("Scene 3: over budget")

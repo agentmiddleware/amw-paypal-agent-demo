@@ -1,21 +1,13 @@
 FROM python:3.12-slim
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
-    && rm -rf /var/lib/apt/lists/*
-
-# AMW gateway source at the pinned commit (its server package is not
-# pip-installable, so it is loaded from this checkout via AMW_SOURCE_DIR).
-ARG AMW_REF=bc5b671fc85b5f1c5e9d5a2a877050d227e318db
-RUN git clone --quiet https://github.com/agentmiddleware/agent-middleware-api /opt/amw \
-    && git -C /opt/amw checkout --quiet "$AMW_REF" \
-    && pip install --no-cache-dir -r /opt/amw/requirements.txt
-ENV AMW_SOURCE_DIR=/opt/amw
-
+# Builds from this repository alone: the gateway (mini_gateway/) and the two
+# SDKs (vendor/) are all in the build context. Nothing is fetched from GitHub.
 WORKDIR /demo
-COPY pyproject.toml README.md LICENSE ./
+COPY pyproject.toml requirements.txt README.md LICENSE ./
+COPY vendor ./vendor
+COPY mini_gateway ./mini_gateway
 COPY *.py ./
 COPY tests ./tests
-RUN pip install --no-cache-dir ".[dev]"
+RUN pip install --no-cache-dir -r requirements.txt
 
 CMD ["python", "demo.py"]
