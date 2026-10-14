@@ -14,8 +14,8 @@ requires-python = ">=3.11"
 # two installable AMW packages are pinned by subdirectory instead. The gateway
 # server source (app/) is fetched at the same commit by scripts/fetch_amw.sh.
 dependencies = [
-    "b2a-sdk[verify] @ git+https://github.com/agentmiddleware/agent-middleware-api@b082579d#subdirectory=b2a_sdk",
-    "openai-agent-middleware @ git+https://github.com/agentmiddleware/agent-middleware-api@b082579d#subdirectory=wrappers/openai-agent-middleware",
+    "b2a-sdk[verify] @ git+https://github.com/agentmiddleware/agent-middleware-api@bc5b671f#subdirectory=b2a_sdk",
+    "openai-agent-middleware @ git+https://github.com/agentmiddleware/agent-middleware-api@bc5b671f#subdirectory=wrappers/openai-agent-middleware",
     "openai>=1.40",
     "httpx>=0.28.1,<0.29",
 ]

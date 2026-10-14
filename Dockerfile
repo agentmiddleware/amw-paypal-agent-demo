@@ -6,7 +6,7 @@ RUN apt-get update \
 
 # AMW gateway source at the pinned commit (its server package is not
 # pip-installable, so it is loaded from this checkout via AMW_SOURCE_DIR).
-ARG AMW_REF=b082579d4e15e21bab5a3bc65a10464817927ded
+ARG AMW_REF=bc5b671fc85b5f1c5e9d5a2a877050d227e318db
 RUN git clone --quiet https://github.com/agentmiddleware/agent-middleware-api /opt/amw \
     && git -C /opt/amw checkout --quiet "$AMW_REF" \
     && pip install --no-cache-dir -r /opt/amw/requirements.txt

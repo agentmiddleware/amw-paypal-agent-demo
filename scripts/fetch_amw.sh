@@ -4,7 +4,7 @@
 # tests load it from this checkout. To use your own checkout instead, skip this
 # script and set AMW_SOURCE_DIR.
 set -eu
-AMW_REF=b082579d4e15e21bab5a3bc65a10464817927ded
+AMW_REF=bc5b671fc85b5f1c5e9d5a2a877050d227e318db
 DEST="$(cd "$(dirname "$0")/.." && pwd)/.amw/agent-middleware-api"
 
 if [ ! -d "$DEST/.git" ]; then
