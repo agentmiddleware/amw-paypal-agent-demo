@@ -1,0 +1,16 @@
+services:
+  demo:
+    build: .
+    # .env is optional: without it the demo runs fully offline.
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./out:/demo/out
+    command: ["python", "demo.py"]
+
+  tests:
+    build: .
+    command: ["python", "-m", "pytest"]
+    network_mode: none
+    profiles: ["tests"]
