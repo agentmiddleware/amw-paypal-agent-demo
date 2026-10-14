@@ -1,6 +1,6 @@
-"""Fixtures: the pinned AMW gateway in process, PayPal and OpenAI faked.
+"""Fixtures: the mini gateway in process, PayPal and OpenAI faked.
 
-Nothing here opens a network connection: AMW runs over httpx.ASGITransport,
+Nothing here opens a network connection: the gateway runs over httpx.ASGITransport,
 PayPal over httpx.MockTransport, and the LLM is ScriptedLLM.
 """
 

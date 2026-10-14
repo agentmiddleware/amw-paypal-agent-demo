@@ -1,14 +1,13 @@
-"""Registers ``paypal_checkout`` as a governed AMW tool.
+"""Registers ``paypal_checkout`` as a governed tool on the mini gateway.
 
-Pattern: the b2a_sdk ``@mcp_tool`` decorator carries the tool metadata (see
-AMW examples/mcp_tool_example.py), and the gateway's
-``service_registry.register_local`` makes it executable with
-``require_permit=True`` (see AMW scripts/demo_ambiguous_retry.py).
+The b2a_sdk ``@mcp_tool`` decorator carries the tool metadata, and
+``ToolRegistry.register_local`` makes it executable. Every tool on the mini
+gateway needs a permit; there is no unpermitted path.
 
-Pricing convention for this demo: 1 AMW credit = 1 US cent. The checkout price
-is fixed by the merchant at registration, so the gateway charges exactly the
-order amount and checks it against the permit before the tool body runs. The
-LLM never chooses the price.
+Pricing convention for this demo: 1 credit = 1 US cent. The checkout price is
+fixed by the merchant at registration, so the gateway charges the order amount
+and checks it against the permit before the tool body runs. The LLM never
+chooses the price.
 """
 
 from __future__ import annotations
@@ -17,6 +16,8 @@ from decimal import Decimal
 from typing import Any
 
 from b2a_sdk.decorators import mcp_tool
+
+from mini_gateway import ToolRegistry
 
 from paypal_client import PayPalClient, PayPalError
 
@@ -52,7 +53,7 @@ def build_checkout_tool(paypal: PayPalClient, *, price_usd: Decimal, currency: s
             try:
                 captured = await paypal.capture_order(order["id"], amw_idempotency_key=amw_idempotency_key)
             except PayPalError as exc:
-                # No response does not mean no capture. Raising here makes AMW
+                # No response does not mean no capture. Raising here makes the gateway
                 # refund the credits, so first ask PayPal what happened.
                 if not exc.ambiguous:
                     raise
@@ -80,19 +81,18 @@ def _first_capture(order: dict[str, Any]) -> dict[str, Any]:
         return {}
 
 
-def register_checkout_tool(registry: Any, paypal: PayPalClient, *, price_usd: Decimal) -> dict:
-    """Register the tool on an AMW ``ServiceRegistry`` (from ``get_service_registry()``)."""
-    from app.schemas.billing import ServiceCategory  # AMW gateway source
-
+def register_checkout_tool(registry: ToolRegistry, paypal: PayPalClient, *, price_usd: Decimal) -> dict:
+    """Register the tool on a mini gateway ``ToolRegistry``."""
     handler = build_checkout_tool(paypal, price_usd=price_usd)
     meta = handler._b2a_mcp_metadata
     return registry.register_local(
         service_id=meta["service_id"],
         name=meta["name"],
         description=meta["description"],
-        category=ServiceCategory(meta["category"]),
+        category=meta["category"],
         func=handler,
         credits_per_unit=meta["credits_per_unit"],
         unit_name=meta["unit_name"],
-        require_permit=True,
+        # The gateway fills this in from the call's own idempotency key.
+        idempotency_key_arg="amw_idempotency_key",
     )

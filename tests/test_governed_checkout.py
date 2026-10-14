@@ -1,4 +1,4 @@
-"""The agent, the real pinned AMW gateway, and a fake PayPal, end to end."""
+"""The agent, the in-process mini gateway, and a fake PayPal, end to end."""
 
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ async def test_happy_path_charges_the_price_and_captures_once(live_gateway, fake
 async def test_lost_response_retry_returns_same_receipt_and_one_capture_per_key(
     live_gateway, fake_paypal
 ):
-    # This exercises AMW's replay: the tool body does not run on the retry.
+    # This exercises the gateway's replay: the tool body does not run on the retry.
     # PayPal-Request-Id reuse is covered in test_paypal_client.py.
     lossy = LostResponseTransport(live_gateway.transport())
     creds, outcome = await _checkout(live_gateway, agent_id="retry", cap=PRICE, transport=lossy)
@@ -104,7 +104,7 @@ async def test_cross_wallet_call_is_refused_before_paypal(live_gateway, fake_pay
 
 async def test_capture_with_lost_responses_is_looked_up_not_refunded(live_gateway, fake_paypal):
     # PayPal captures but both capture responses are lost. The tool must not
-    # raise (AMW would refund the credits while the money moved).
+    # raise (the gateway would refund the credits while the money moved).
     fake_paypal.drop_capture_responses = 2
     creds, outcome = await _checkout(live_gateway, agent_id="ambiguous", cap=PRICE)
 

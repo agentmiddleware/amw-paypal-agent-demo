@@ -1,10 +1,10 @@
-"""An OpenAI tool-calling agent that pays through AMW.
+"""An OpenAI tool-calling agent that pays through the governed gateway.
 
 Flow: the model sees ``paypal_checkout`` as a function tool. When it calls it,
 AMW's OpenAI wrapper (``GovernedToolRunner``) obtains a permit for this run
 capped at the user's spending limit, then invokes the tool under the
 idempotency key ``oai-<tool_call.id>``. A lost response is retried with the
-same tool call, so AMW replays the stored receipt instead of paying again.
+same tool call, so the gateway replays the stored receipt instead of paying again.
 
 Model: ``OPENAI_MODEL`` (default below). The OpenAI client is passed in, so
 tests and the offline demo can supply a scripted one.
@@ -107,7 +107,7 @@ async def run_checkout_agent(
         try:
             result = await runner.run(governed_call)
         except TransportError:
-            # Response lost: retry the same tool call. AMW replays the stored
+            # Response lost: retry the same tool call. The gateway replays the stored
             # outcome for this key instead of running the tool again.
             if attempt == max_attempts:
                 raise
@@ -120,7 +120,7 @@ async def run_checkout_agent(
                 attempts=attempt,
             )
         except AgentMiddlewareError as exc:
-            # Tool failed (AMW refunded the charge) or AMW refused the call.
+            # Tool failed (the gateway refunded the charge) or the gateway refused the call.
             return CheckoutOutcome(
                 status="failed",
                 tool_call_id=call.id,

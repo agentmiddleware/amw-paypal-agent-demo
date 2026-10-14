@@ -5,17 +5,18 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "amw-paypal-agent-demo"
 version = "0.1.0"
-description = "An OpenAI agent that pays through PayPal sandbox behind Agent Middleware (AMW) permits, idempotency and signed receipts"
+description = "An OpenAI agent that pays through PayPal sandbox behind permits, idempotency and signed receipts, on a small MIT reference gateway"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
-# AMW is pinned to one commit. The repository root at that commit has no
-# build-system or package list, so it cannot be pip-installed as a whole; the
-# two installable AMW packages are pinned by subdirectory instead. The gateway
-# server source (app/) is fetched at the same commit by scripts/fetch_amw.sh.
+# b2a-sdk and openai-agent-middleware are vendored MIT packages under vendor/.
+# Install them from there in the same command (see requirements.txt), so pip
+# never looks for them anywhere else.
 dependencies = [
-    "b2a-sdk[verify] @ git+https://github.com/agentmiddleware/agent-middleware-api@bc5b671f#subdirectory=b2a_sdk",
-    "openai-agent-middleware @ git+https://github.com/agentmiddleware/agent-middleware-api@bc5b671f#subdirectory=wrappers/openai-agent-middleware",
+    "b2a-sdk[verify]>=0.5.0",
+    "openai-agent-middleware>=0.1.0",
+    "cryptography>=50.0.0",
+    "starlette>=0.40",
     "openai>=1.40",
     "httpx>=0.28.1,<0.29",
 ]
@@ -25,8 +26,14 @@ dev = ["pytest>=8", "pytest-asyncio>=0.24"]
 
 [tool.setuptools]
 py-modules = ["agent", "demo", "fakes", "gateway", "paypal_client", "paypal_tool"]
+packages = ["mini_gateway"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+
+# uv sync / uv run read this; plain pip uses requirements.txt instead.
+[tool.uv.sources]
+b2a-sdk = { path = "vendor/b2a_sdk", editable = true }
+openai-agent-middleware = { path = "vendor/openai-agent-middleware", editable = true }
