@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+.venv/
+.venv-*/
+.amw/
+out/
+__pycache__/
+*.pyc
+*.db
+.pytest_cache/
+*.egg-info/
+build/
+dist/

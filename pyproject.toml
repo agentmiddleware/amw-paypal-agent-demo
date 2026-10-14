@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "amw-paypal-agent-demo"
+version = "0.1.0"
+description = "An OpenAI agent that pays through PayPal sandbox behind Agent Middleware (AMW) permits, idempotency and signed receipts"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+# AMW is pinned to one commit. The repository root at that commit has no
+# build-system or package list, so it cannot be pip-installed as a whole; the
+# two installable AMW packages are pinned by subdirectory instead. The gateway
+# server source (app/) is fetched at the same commit by scripts/fetch_amw.sh.
+dependencies = [
+    "b2a-sdk[verify] @ git+https://github.com/agentmiddleware/agent-middleware-api@b082579d#subdirectory=b2a_sdk",
+    "openai-agent-middleware @ git+https://github.com/agentmiddleware/agent-middleware-api@b082579d#subdirectory=wrappers/openai-agent-middleware",
+    "openai>=1.40",
+    "httpx>=0.28.1,<0.29",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+
+[tool.setuptools]
+py-modules = ["agent", "demo", "fakes", "gateway", "paypal_client", "paypal_tool"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
