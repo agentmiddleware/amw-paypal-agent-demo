@@ -8,7 +8,7 @@ The agent gets a permit capped at the amount the user allowed. The gateway check
 
 The gateway in this repo is `mini_gateway/`: a small MIT reference gateway I wrote for this demo, about 1,000 lines of Python. It serves the HTTP contract that Agent Middleware's (AMW) MIT client SDK speaks: wallets, API keys, permits, MCP `tools/call`, signed receipts and the published key set. That is what lets the whole thing run from this repo with one plain pip install and no GitHub access.
 
-It is **not** the production AMW core. The AMW core is source available under the Business Source License, is not included here, and is not needed to run anything in this repo. The mini gateway has no velocity limits, no daily limits (it accepts `daily_limit` and ignores it), no KYC, no multi node storage and no admin UI. It does the four things this demo is about and does them carefully.
+It is **not** the production AMW core. The AMW gateway is Fair Source (FSL-1.1-ALv2), see https://github.com/agentmiddleware/agent-middleware. It is not included here, and is not needed to run anything in this repo. The mini gateway has no velocity limits, no daily limits (it accepts `daily_limit` and ignores it), no KYC, no multi node storage and no admin UI. It does the four things this demo is about and does them carefully.
 
 ## What the demo shows
 
@@ -110,8 +110,8 @@ PAYPAL_SANDBOX_CARD_EXPIRY=<YYYY-MM>
 
 ## License
 
-Everything in this repo is MIT.
+This project is licensed under the Apache License 2.0 (see `LICENSE` and `NOTICE`).
 
-* This project, including `mini_gateway/`, is MIT (see `LICENSE`).
+* This project, including `mini_gateway/`, is Apache-2.0 (see `LICENSE`).
 * `vendor/b2a_sdk` and `vendor/openai-agent-middleware` are AMW's MIT client SDKs, copied unmodified with their own `LICENSE` files. Copyright stays with their authors.
-* The AMW gateway core is not included, not fetched and not required. It is source available under the Business Source License; see the AMW repository if you want it.
+* The AMW gateway is not included, not fetched and not required. It is Fair Source (FSL-1.1-ALv2); see https://github.com/agentmiddleware/agent-middleware.
