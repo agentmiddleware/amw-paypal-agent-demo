@@ -13,13 +13,13 @@ drive the governed loop with recorded tool-call shapes.
 
 Every tool call OpenAI emits carries an id (`call_…`) that is assigned once
 and lives in the conversation transcript your application already persists.
-A retry of the same tool call — after a dropped connection, a crashed worker,
-a resumed run — therefore carries the same id. That is exactly what the trust
+A retry of the same tool call after a dropped connection, a worker crash, or
+a resumed run carries the same id. That is what the trust
 plane's `Idempotency-Key` exists to capture, so `GovernedToolRunner`:
 
 1. derives the key from the id (`oai-<tool_call.id>`) and **never invents
-   one** — a tool call without an id is refused, because an invented key would
-   turn the retry into a second charged action;
+   one**; a tool call without an id is refused because an invented key could
+   dispatch and charge a new action;
 2. writes the derivation to an `OperationKeyStore` **before the first network
    call**, so a crash between "the model asked" and "the receipt came back"
    resumes with the same key;
@@ -42,8 +42,8 @@ This package is not published to PyPI. Install it from a checkout of this
 repository:
 
 ```bash
-git clone https://github.com/PetrefiedThunder/agent-middleware-api.git
-cd agent-middleware-api
+git clone https://github.com/agentmiddleware/agent-middleware
+cd agent-middleware
 python -m pip install -e ./b2a_sdk
 python -m pip install -e wrappers/openai-agent-middleware
 ```
@@ -82,7 +82,7 @@ async def main() -> None:
     assistant = completion.choices[0].message
     messages.append(assistant)
 
-    # Each tool call becomes exactly one governed action; retries replay.
+    # For completed calls, a retry with the same key returns the original receipt instead of dispatching again.
     for outcome in await runner.run_all(assistant.tool_calls or []):
         messages.append(outcome.as_tool_message())
         print(outcome.receipt.receipt_id, outcome.receipt.credits_charged)
@@ -106,10 +106,10 @@ input_items.append(outcome.as_function_call_output())
 Keep `operations.json` (or your own `OperationKeyStore` implementation) with
 the run's transcript. Construct a new runner with the **same `run_id` and
 wallet**, register the same tools, and replay the transcript's tool calls:
-every call that already
-completed returns its original receipt, every call that was interrupted
-finishes as one action, and nothing is charged twice. A run resumed after its
-permits expired needs a new `run_id` and new tool-call IDs for new work;
+for completed calls,
+a retry with the same key returns the original receipt instead of dispatching again.
+An interrupted call may return a signed `delivery_uncertain` receipt. A run resumed after its
+permits expired needs a new `run_id` and new tool call IDs for new work;
 previously recorded calls remain bound to their original run. Changing the
 runner's permit budget or TTL does not alter a persisted permit request; use a
 new run for new limits.

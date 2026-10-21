@@ -2,9 +2,9 @@
 
 Order of operations for ``tools/call``:
 
-1. The idempotency key is looked up first. A finished key replays its stored
-   response (same receipt, no second charge, the tool does not run). A key
-   whose first attempt is still running answers ``idempotency_in_progress``.
+1. The idempotency key is looked up first. For a finished key:
+   a retry with the same key returns the original receipt instead of dispatching again.
+   A key whose first attempt is still running answers ``idempotency_in_progress``.
    A key whose first attempt never reported back answers
    ``delivery_uncertain`` with a signed receipt saying so.
 2. The permit is checked: right wallet, not expired, tool and scope allowed,

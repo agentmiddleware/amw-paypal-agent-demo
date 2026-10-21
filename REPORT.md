@@ -2,7 +2,7 @@
 
 ## Update 2026-10-14: no private dependency
 
-The AMW pin (`b082579d`, later `bc5b671f`) is gone. The demo now runs on `mini_gateway/`, a small MIT reference gateway written clean room for this demo from the vendored MIT SDKs' HTTP contract. The two SDKs are vendored unmodified under `vendor/` and install from there (`pip install -r requirements.txt`); nothing is fetched from GitHub, and `scripts/fetch_amw.sh` and `AMW_SOURCE_DIR` are removed. The original 18 tests pass against it with their assertions unchanged, 11 new gateway tests were added (29 total), and the offline demo passes all four scenes. Findings below that cite the AMW gateway describe the earlier pinned build.
+The AMW pin (`b082579d`, later `bc5b671f`) is gone. The demo now runs on `mini_gateway/`, a small Apache 2.0 reference gateway written clean room for this demo from the vendored MIT SDKs' HTTP contract. The two SDKs are vendored under `vendor/` and install from there (`pip install -r requirements.txt`); nothing is fetched from GitHub, and `scripts/fetch_amw.sh` and `AMW_SOURCE_DIR` are removed. The original 18 tests pass against it with their assertions unchanged, 11 new gateway tests were added (29 total), and the offline demo passes all four scenes. Findings below that cite the AMW gateway describe the earlier pinned build.
 
 ## Summary
 
@@ -75,10 +75,10 @@ Not run:
   * the demo checked `<= 1` captures where it meant `== 1`;
   * the capture status itself was not checked.
 * **L2. Retry timeout only matters with a remote gateway.** `B2AClient` defaults to a 10 second timeout, and a retry while the first call is still running gets `idempotency_in_progress`. The demo always runs the gateway in process, where this timeout does not fire. A remote gateway setup should raise the timeout and retry on that error.
-* **L3. Two documentation nits.**
-  * AMW's README for the OpenAI wrapper says to `git clone https://github.com/PetrefiedThunder/agent-middleware-api.git`, while the pin uses `agentmiddleware/agent-middleware-api`. Both may resolve to the same repository; not verified.
+* **L3. Documentation notes.**
+  * The OpenAI wrapper now says to `git clone https://github.com/agentmiddleware/agent-middleware`. The earlier pin used `agentmiddleware/agent-middleware-api`.
   * The default model `gpt-4.1-mini` is a guess at a widely available model; set `OPENAI_MODEL` to override.
-* **L4. Licensing.** AMW's gateway code (`app/`) is BUSL 1.1. This project is MIT and does not include that code; it fetches it at setup time. The README says so.
+* **L4. Licensing.** Apache 2.0 (gateway is Fair Source, FSL-1.1). The AMW gateway is not included in this repository.
 * **L5. Instruction file conflicts.**
   * The global instructions ask for a Muse review. That command was denied in this session, so it was skipped. A reviewer subagent did the independent review instead.
   * In this shell, `muse` is a function that silently adds `--yolo` to `exec`, which conflicts with the global rule against `--yolo`.
@@ -112,7 +112,7 @@ tests/test_paypal_client.py::test_capture_timeout_retry_reuses_request_id_and_ca
 
 Mutation checks, run by hand and then reverted:
 
-* Agent sends a fresh tool call id on each retry: the lost response test fails. The permit cap alone denied the second charge, so even that bug did not double charge.
+* Agent sends a fresh tool call id on each retry: the lost response test fails. The permit cap blocked the additional debit in that run.
 * Tool re-raises instead of looking up the order: the ambiguous capture test fails.
 
 Other checks:
