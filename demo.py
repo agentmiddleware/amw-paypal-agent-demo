@@ -2,16 +2,16 @@
 """Four scenes: an LLM agent pays through PayPal behind a governed gateway.
 
 1. Happy path: permit capped at the price, one checkout, one signed receipt.
-2. Lost response: the gateway captures, the response times out, the agent
-   retries the same tool call. Same receipt, at most one PayPal capture.
+2. Lost response: the gateway captures, the response times out, and
+   a retry with the same key returns the original receipt instead of dispatching again.
 3. Over budget: the permit cap is below the price. The gateway denies before the tool
    runs, so PayPal is never called.
 4. Offline verification: the receipt from scene 1 is checked against the
    published key set from files on disk, after the gateway has shut down.
 
 PayPal runs against the sandbox when PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET
-are set, otherwise against an in-process fake. The LLM is OpenAI when
-OPENAI_API_KEY is set, otherwise a scripted stand-in.
+are set, otherwise against a local fake. The LLM is OpenAI when
+OPENAI_API_KEY is set, otherwise a scripted model.
 """
 
 from __future__ import annotations
@@ -130,7 +130,7 @@ async def run(args: argparse.Namespace) -> dict:
 
     scene("Setup")
     say(f"  PayPal:  {'sandbox (live)' if live_paypal else 'offline fake'}")
-    say(f"  LLM:     {'OpenAI ' + model_from_env() if live_llm else 'scripted stand-in'}")
+    say(f"  LLM:     {'OpenAI ' + model_from_env() if live_llm else 'scripted model'}")
     say(f"  Price:   {price} USD, set by the merchant at tool registration")
 
     gw = Gateway(Path(tempfile.mkdtemp(prefix="amw-paypal-")) / "amw.db")
@@ -153,7 +153,7 @@ async def run(args: argparse.Namespace) -> dict:
         creds2, retried = await demo.checkout("agent-retry", price, lose_response=True)
         say("  First attempt: gateway charged, PayPal captured, receipt written,")
         say("  then the response timed out before it reached the agent.")
-        say("  The agent retried the same tool call (same idempotency key).")
+        say("  a retry with the same key returns the original receipt instead of dispatching again.")
         show(retried)
         lost_receipt_id = demo.lossy.lost[0]["result"]["receipt"]["receipt_id"]
         debits = await demo.debits(creds2)
@@ -175,10 +175,10 @@ async def run(args: argparse.Namespace) -> dict:
         writes_before = fake.writes if fake else None
         _, denied = await demo.checkout("agent-over-budget", cap)
         show(denied)
-        require(denied.status == "denied", "over-budget checkout was not denied")
-        require(demo.captures() == before, "over-budget checkout reached PayPal")
+        require(denied.status == "denied", "over budget checkout was not denied")
+        require(demo.captures() == before, "over budget checkout reached PayPal")
         if fake:
-            require(fake.writes == writes_before, "over-budget checkout sent a PayPal request")
+            require(fake.writes == writes_before, "over budget checkout sent a PayPal request")
             say("  PayPal requests sent: 0")
         summary["over_budget_reason"] = denied.denial_reason
 

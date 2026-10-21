@@ -4,24 +4,24 @@ Operation identity
 ------------------
 OpenAI assigns every tool call an id (``call_…``) once, and that id lives in
 the conversation transcript the application already persists. A retry of the
-same tool call — after a dropped connection, a crashed worker, a resumed run —
-therefore carries the same id. That is exactly the property the trust plane's
+same tool call after a dropped connection, a worker crash, or a resumed run
+carries the same id. That is the property the trust plane's
 ``Idempotency-Key`` exists to capture, so this runner derives the key from the
 id (``oai-<tool_call.id>``) instead of minting one per attempt.
 
 The derivation is written to an :class:`OperationKeyStore` *before* the first
 network call, so the key survives a crash between "the model asked" and "the
 receipt came back". A tool call without an id is refused, never given a fresh
-UUID: a fresh key would turn the retry into a second charged action — the same
-failure the trust plane refuses on its side as ``invalid_idempotency_key``.
+UUID: a fresh key could dispatch and charge a new action. The trust plane also
+refuses an invalid key as ``invalid_idempotency_key``.
 
 Permits
 -------
 One permit per (run, tool). Its idempotency key is ``oai-permit-<run>-<tool>``
 and the complete permit request is recorded in the store before the permit
-request goes out, so any later attempt — a retry after a crash, or the next
-tool call in a resumed process — re-sends the identical request and the server
-replays the permit instead of rejecting a fresh timestamp under the same key.
+request goes out. A later attempt after a crash or in a resumed process sends
+the identical request, and the server replays the permit instead of rejecting
+a fresh timestamp under the same key.
 """
 
 from __future__ import annotations
@@ -409,11 +409,9 @@ class GovernedToolRunner:
     # -- execution ---------------------------------------------------------
 
     async def run(self, tool_call: Any) -> GovernedToolResult:
-        """Execute one tool call as exactly one governed action.
+        """Run a governed tool call.
 
-        Retrying the same tool call — same id — reuses the recorded key and
-        permit, so the trust plane replays the original receipt instead of
-        charging again.
+        For a completed call: a retry with the same key returns the original receipt instead of dispatching again.
         """
         call = normalize_tool_call(tool_call)
         tool_name = self.tool_name_for(call.name)

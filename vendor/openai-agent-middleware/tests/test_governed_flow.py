@@ -1,4 +1,4 @@
-"""The OpenAI runner turns each tool call into exactly one governed action.
+"""The OpenAI runner reuses recorded operation keys across attempts.
 
 These tests pin the operation-identity contract: the key on the wire is
 derived from the model's ``tool_call.id``, it is persisted before any network
