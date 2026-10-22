@@ -51,10 +51,9 @@ reviews:
     - "!**/*.min.js"
     - "!**/*.min.css"
     - "!**/*.map"
-    # Snapshots and fixture data
+    # Snapshots (fixtures stay in review scope)
     - "!**/__snapshots__/**"
     - "!**/*.snap"
-    - "!**/fixtures/**"
     # Data dumps, databases, backups, temp files
     - "!**/*.csv"
     - "!**/*.jsonl"
