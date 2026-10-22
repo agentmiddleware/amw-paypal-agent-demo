@@ -1,0 +1,150 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: false
+  high_level_summary_in_walkthrough: false
+  collapse_walkthrough: true
+  changed_files_summary: false
+  sequence_diagrams: false
+  related_issues: false
+  related_prs: false
+  suggested_labels: false
+  suggested_reviewers: false
+  in_progress_fortune: false
+  poem: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+    ignore_title_keywords:
+      - WIP
+      - "[skip review]"
+    ignore_usernames:
+      - dependabot[bot]
+      - renovate[bot]
+
+  path_filters:
+    # Lockfiles
+    - "!**/uv.lock"
+    - "!**/package-lock.json"
+    - "!**/pnpm-lock.yaml"
+    - "!**/yarn.lock"
+    - "!**/poetry.lock"
+    # Vendored MIT SDKs (b2a_sdk, openai-agent-middleware): reviewed upstream
+    - "!vendor/**"
+    # Run logs and generated reports
+    - "!STATUS.log"
+    - "!REPORT.md"
+    # Build output, caches, generated files
+    - "!**/dist/**"
+    - "!**/build/**"
+    - "!**/*.egg-info/**"
+    - "!**/__pycache__/**"
+    - "!**/*.pyc"
+    - "!**/node_modules/**"
+    - "!out/**"
+    - "!**/*.min.js"
+    - "!**/*.min.css"
+    - "!**/*.map"
+    # Snapshots and fixture data
+    - "!**/__snapshots__/**"
+    - "!**/*.snap"
+    - "!**/fixtures/**"
+    # Data dumps, databases, backups, temp files
+    - "!**/*.csv"
+    - "!**/*.jsonl"
+    - "!**/*.parquet"
+    - "!**/*.db"
+    - "!**/*.sqlite"
+    - "!**/*.sqlite3"
+    - "!**/*.dump"
+    - "!**/*.sql.gz"
+    - "!**/*.bak"
+    - "!**/*.orig"
+    - "!**/*.tmp"
+    - "!**/tmp/**"
+
+  path_instructions:
+    - path: "paypal_client.py"
+      instructions: |
+        PayPal Orders v2 client. Money moves here; review for these invariants:
+        - Sandbox by default: base URL defaults to SANDBOX_BASE_URL, and any override must
+          stay an https *.paypal.com host. Flag any change that relaxes the host/scheme check
+          or makes production the default.
+        - Credentials (PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET), OAuth tokens and
+          PAYPAL_SANDBOX_CARD_NUMBER/EXPIRY must never appear in logs, exception messages,
+          repr(), or returned dicts. Errors carry status code and PayPal's error name only.
+        - Idempotency: every write sends a PayPal-Request-Id from paypal_request_id(), keyed
+          on the AMW idempotency key AND the operation name (create vs capture must never share
+          an id). Retries on TransportError must reuse the same id. A failure with no response
+          must set ambiguous=True; never treat it as "not charged".
+        - Amounts are Decimal end to end, serialized with two decimals. Flag any float.
+    - path: "paypal_tool.py"
+      instructions: |
+        Registers paypal_checkout as a governed tool on the mini gateway.
+        - The merchant fixes the price at registration; the LLM must never be able to set or
+          change the amount, currency or credits. Flag any tool argument that affects price.
+        - Credits are Decimal (1 credit = 1 US cent via usd_to_credits); flag float math other
+          than the metadata field the SDK decorator requires.
+        - An ambiguous capture failure must be resolved with get_order before raising, because
+          raising makes the gateway refund credits for a payment that may have happened.
+        - The idempotency key must flow from the gateway (idempotency_key_arg), not be minted here.
+    - path: "gateway.py"
+      instructions: |
+        In-process wrapper around mini_gateway. Admin key and receipt signing key are generated
+        per run and held only in memory; flag persisting, logging or returning them.
+        AgentCredentials.api_key must stay repr=False. Error messages must contain path and
+        status only, never request or response bodies.
+    - path: "mini_gateway/**/*.py"
+      instructions: |
+        MIT reference gateway: permits, wallet charges, idempotency and signed receipts.
+        - governance.py order of operations is load-bearing: idempotency lookup, then permit
+          check (wallet, expiry, tool, scope, remaining max_credits), then debit + mark in-flight
+          in the same transaction, then run, then refund on error and write a signed receipt.
+          Flag any await between check and reserve, any path that runs a tool without a permit,
+          and any path that charges twice for one idempotency key.
+        - A cancelled or crashed call must end as delivery_uncertain with the charge kept;
+          never auto-refund or auto-retry it.
+        - store.py: money is stored as decimal strings, never floats. API keys are stored hashed.
+        - signing.py: every field a verifier relies on (kid, alg, canonicalization, receipt_id)
+          must be inside the signed canonical JSON. Private keys never leave Signer.
+        - app.py: every route except trust-keys and health needs X-API-Key; key comparison must be
+          constant-time; a wallet-scoped key must not read or spend another wallet (add a
+          cross-wallet negative test for any new route).
+    - path: "agent.py"
+      instructions: |
+        OpenAI tool-calling agent that pays through GovernedToolRunner.
+        - The tool schema must not expose a price or amount argument (additionalProperties false).
+        - The permit cap comes from the user's spending limit, not from the model.
+        - Retries must reuse the same tool_call id (idempotency key oai-<tool_call.id>) so the
+          gateway replays the stored receipt instead of paying again.
+        - Do not log the model's raw tool arguments together with credentials or API keys.
+    - path: "{demo,fakes}.py"
+      instructions: |
+        demo.py runs offline with fakes when credentials are absent; it must never fall through to
+        a non-sandbox PayPal URL. FakePayPal must keep PayPal-Request-Id replay semantics (same id,
+        same response, no second capture) so tests prove real idempotency, not a fake shortcut.
+    - path: "tests/**/*.py"
+      instructions: |
+        pytest + pytest-asyncio (asyncio_mode=auto). conftest.py blocks all network access; tests
+        must not weaken or bypass that guard or require real PayPal/OpenAI credentials.
+        Expect negative-path coverage for changes to money, permits or receipts: permit denied,
+        over-budget, expired permit, cross-wallet key, replayed idempotency key, lost response,
+        tampered receipt. Flag tests that assert on float amounts or that were loosened to pass.
+
+chat:
+  art: false
+
+knowledge_base:
+  opt_out: false
+  learnings:
+    scope: auto
+  issues:
+    scope: auto
+  pull_requests:
+    scope: auto
