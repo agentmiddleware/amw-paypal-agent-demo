@@ -106,6 +106,88 @@ async def balance(gw: MiniGateway, key: str, wallet_id: str) -> Decimal:
         return Decimal((await client.get(f"/v1/billing/wallets/{wallet_id}")).json()["balance"])
 
 
+async def mcp_call(gw, api_key, wallet_id, permit_id, *, meta=None, context_key=None, header_key=None,
+                   text="x", request_id=1):
+    params = {
+        "name": "echo",
+        "arguments": {"text": text},
+        "mcpContext": {"wallet_id": wallet_id, "permit_id": permit_id},
+    }
+    if context_key is not None:
+        params["mcpContext"]["idempotency_key"] = context_key
+    if meta is not None:
+        params["_meta"] = {"io.agentmiddleware/idempotency_key": meta}
+    async with http(gw, api_key) as client:
+        response = await client.post(
+            "/mcp/messages",
+            json={"jsonrpc": "2.0", "id": request_id, "method": "tools/call", "params": params},
+            headers={"Idempotency-Key": header_key} if header_key is not None else {},
+        )
+    assert response.status_code == 200
+    return response.json()
+
+
+async def test_meta_key_is_accepted_and_conflicts_with_legacy_paths_are_rejected(gw, tools):
+    wallet_id, api_key = await provision(gw)
+    async with sdk(gw, api_key) as client:
+        p = await permit(client, wallet_id, max_credits=1000)
+
+    first = await mcp_call(gw, api_key, wallet_id, p.permit_id, meta="meta-only")
+    replay = await mcp_call(gw, api_key, wallet_id, p.permit_id, meta="meta-only", request_id=2)
+    assert first["result"]["receipt"] == replay["result"]["receipt"]
+    assert replay["id"] == 2
+    assert tools.runs == 1
+
+    for conflicting in (
+        {"meta": "meta-key", "context_key": "other-key"},
+        {"meta": "meta-key", "header_key": "other-key"},
+        {"context_key": "context-key", "header_key": "other-key"},
+    ):
+        result = await mcp_call(gw, api_key, wallet_id, p.permit_id, **conflicting)
+        assert result["error"]["message"] == "idempotency_key_mismatch"
+    malformed = await mcp_call(gw, api_key, wallet_id, p.permit_id, meta=0, header_key="header-key")
+    assert malformed["error"]["message"] == "invalid_idempotency_key"
+    assert tools.runs == 1
+    assert await balance(gw, api_key, wallet_id) == 1000 - PRICE
+
+    legacy = await mcp_call(gw, api_key, wallet_id, p.permit_id, context_key="legacy")
+    assert legacy["result"]["receipt"]["outcome"] == "success"
+    assert tools.runs == 2
+
+
+async def test_budget_denial_is_signed_stored_and_replayed_without_charge(gw, tools):
+    wallet_id, api_key = await provision(gw)
+    async with sdk(gw, api_key) as client:
+        p = await permit(client, wallet_id, max_credits=PRICE - 1)
+
+    first = await mcp_call(gw, api_key, wallet_id, p.permit_id, meta="deny-key")
+    gw.stop()
+    gw.start()
+    replay = await mcp_call(
+        gw, api_key, wallet_id, p.permit_id, meta="deny-key", request_id=2
+    )
+    assert first["error"]["message"] == "permit_budget_exceeded"
+    assert first["error"]["data"]["receipt"] == replay["error"]["data"]["receipt"]
+    assert replay["id"] == 2
+    receipt = first["error"]["data"]["receipt"]
+    assert receipt["outcome"] == "permit_budget_exceeded"
+    assert receipt["credits_charged"] == "0"
+    assert receipt["ledger_entry_id"] is None
+    assert tools.runs == 0
+    assert await balance(gw, api_key, wallet_id) == 1000
+    assert gw.store.get_operation(wallet_id, "deny-key")["state"] == "completed"
+
+    async with http(gw, api_key) as client:
+        bundle = (await client.get(f"/v1/receipts/{receipt['receipt_id']}/portable")).json()
+        keys = (await client.get("/.well-known/trust-keys.json")).json()
+        ledger = (await client.get(f"/v1/billing/ledger/{wallet_id}")).json()["entries"]
+    assert verify_bundle(bundle, key_set_from_document(keys)).ok
+    assert [entry["action"] for entry in ledger] == ["provision"]
+
+    conflict = await mcp_call(gw, api_key, wallet_id, p.permit_id, meta="deny-key", text="changed")
+    assert conflict["error"]["message"] == "idempotency_key_reused"
+
+
 async def test_budget_is_enforced_before_the_tool_runs(gw, tools):
     wallet_id, key = await provision(gw)
     async with sdk(gw, key) as client:

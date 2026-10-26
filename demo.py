@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Four scenes: an LLM agent pays through PayPal behind a governed gateway.
+"""Five scenes: an LLM agent pays through PayPal behind a governed gateway.
 
 1. Happy path: permit capped at the price, one checkout, one signed receipt.
 2. Lost response: the gateway captures, the response times out, and
    a retry with the same key returns the original receipt instead of dispatching again.
 3. Over budget: the permit cap is below the price. The gateway denies before the tool
    runs, so PayPal is never called.
-4. Offline verification: the receipt from scene 1 is checked against the
+4. Denial replay: the same key returns the same signed denial without dispatch.
+5. Offline verification: the receipt from scene 1 is checked against the
    published key set from files on disk, after the gateway has shut down.
 
 PayPal runs against the sandbox when PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET
@@ -21,17 +22,21 @@ import asyncio
 import json
 import os
 import tempfile
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+import httpx
 from b2a_sdk.receipt_verifier import key_set_from_document, verify_bundle
+from b2a_sdk.errors import PermitDeniedError
+from b2a_sdk.models import PermitRequest
 from openai_b2a import B2AClient
 
 from agent import CheckoutOutcome, model_from_env, run_checkout_agent
 from fakes import FakePayPal, LostResponseTransport, ScriptedLLM
 from gateway import Gateway
 from paypal_client import PayPalClient
-from paypal_tool import TOOL_NAME, register_checkout_tool
+from paypal_tool import TOOL_NAME, register_checkout_tool, usd_to_credits
 
 WIDTH = 64
 REQUEST = "Buy one AMW sticker pack for the team. Spend no more than ${cap}."
@@ -101,6 +106,20 @@ def show(outcome: CheckoutOutcome) -> None:
         say(f"  amount:            {p['amount']} {p['currency']}")
     if outcome.denial_reason:
         say(f"  reason:            {outcome.denial_reason}")
+
+
+class MetaRecordingTransport(httpx.AsyncBaseTransport):
+    """Record only the MCP idempotency metadata used in the denial scene."""
+
+    def __init__(self, inner: httpx.AsyncBaseTransport) -> None:
+        self.inner = inner
+        self.keys: list[str | None] = []
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/mcp/messages":
+            params = json.loads(request.content).get("params", {})
+            self.keys.append(params.get("_meta", {}).get("io.agentmiddleware/idempotency_key"))
+        return await self.inner.handle_async_request(request)
 
 
 async def run(args: argparse.Namespace) -> dict:
@@ -182,7 +201,64 @@ async def run(args: argparse.Namespace) -> dict:
             say("  PayPal requests sent: 0")
         summary["over_budget_reason"] = denied.denial_reason
 
-        scene("Scene 4: offline receipt verification")
+        scene("Scene 4: Retry after denial replays the signed denial receipt")
+        replay_creds = await gw.provision_agent("agent-denial-retry")
+        replay_key = "demo-denial-retry"
+        recorder = MetaRecordingTransport(gw.transport())
+        before = demo.captures()
+        writes_before = fake.writes if fake else None
+        async with B2AClient(
+            api_key=replay_creds.api_key, base_url="http://amw", transport=recorder
+        ) as trust:
+            permit = await trust.create_permit(
+                PermitRequest(
+                    issuer_wallet_id=replay_creds.wallet_id,
+                    subject_wallet_id=replay_creds.wallet_id,
+                    max_credits=usd_to_credits(cap),
+                    expires_at=datetime.now(UTC) + timedelta(minutes=5),
+                    allowed_tools=[TOOL_NAME],
+                    scopes=[f"tool:{TOOL_NAME}:invoke"],
+                ),
+                idempotency_key="demo-denial-permit",
+            )
+            denied_receipts = []
+            for _ in range(2):
+                try:
+                    await trust.invoke_tool(
+                        TOOL_NAME, {"item": "AMW sticker pack"},
+                        wallet_id=replay_creds.wallet_id, permit_id=permit.permit_id,
+                        idempotency_key=replay_key,
+                    )
+                except PermitDeniedError as exc:
+                    require(exc.reason == "permit_budget_exceeded", "unexpected denial reason")
+                    require(bool(exc.receipt_id), "denial has no receipt")
+                    denied_receipts.append(await trust.get_receipt(exc.receipt_id))
+                else:
+                    raise SystemExit("DEMO CHECK FAILED: denied checkout was dispatched")
+            async with gw.http(replay_creds.api_key) as client:
+                denial_bundle = (await client.get(
+                    f"/v1/receipts/{denied_receipts[0].receipt_id}/portable"
+                )).json()
+                denial_keys = (await client.get("/.well-known/trust-keys.json")).json()
+        denial_verified = verify_bundle(denial_bundle, key_set_from_document(denial_keys)).ok
+        replay_debits = await demo.debits(replay_creds)
+        say(f'  params._meta["io.agentmiddleware/idempotency_key"]: {replay_key}')
+        say(f"  denial receipt on both attempts: {denied_receipts[0].receipt_id}")
+        say(f"  Ed25519 signature verified: {denial_verified}")
+        say(f"  PayPal captures: {demo.captures() - before}; wallet debits: {replay_debits}")
+        require(recorder.keys == [replay_key, replay_key], "key was missing from MCP _meta")
+        require(denied_receipts[0].raw == denied_receipts[1].raw, "denial receipt changed on retry")
+        require(denial_verified, "denial receipt signature did not verify")
+        require(demo.captures() == before and replay_debits == 0, "denied call caused a charge")
+        if fake:
+            require(fake.writes == writes_before, "denied retry reached PayPal")
+        summary.update(
+            denial_replay_receipt_id=denied_receipts[0].receipt_id,
+            denial_replay_verified=denial_verified,
+            denial_replay_debits=replay_debits,
+        )
+
+        scene("Scene 5: offline receipt verification")
         receipt_id = happy.receipt.receipt_id
         async with gw.http(creds1.api_key) as client:
             bundle = (await client.get(f"/v1/receipts/{receipt_id}/portable")).json()
