@@ -91,7 +91,7 @@ The demo uses the PayPal sandbox when both PayPal variables are set, and OpenAI 
 Verify a receipt yourself with the SDK command line tool:
 
 ```bash
-.venv/bin/b2a-verify-receipt --bundle "$(find out -maxdepth 1 -name 'rcpt_*.json' -print -quit)" --keys out/trust-keys.json
+.venv/bin/b2a-verify-receipt --bundle "$(ls -t out/rcpt_*.json | head -n 1)" --keys out/trust-keys.json
 ```
 
 Tests (always offline; a guard fails any test that opens a network connection):
