@@ -84,7 +84,7 @@ class Governor:
             "tool": op["tool"],
             "request_hash": op["request_hash"],
             "response_hash": sha256_hex(response) if response is not None else None,
-            "ledger_entry_id": ledger_entry_id or op["ledger_entry_id"],
+            "ledger_entry_id": ledger_entry_id or op["ledger_entry_id"] or None,
             "dispatch_attempt_id": None,
             "credits_authorized": op["credits"],
             "credits_charged": str(charged),
@@ -113,14 +113,21 @@ class Governor:
         name = params.get("name")
         arguments = params.get("arguments") or {}
         context = params.get("mcpContext") or {}
-        if not isinstance(name, str) or not isinstance(arguments, dict) or not isinstance(context, dict):
+        meta = params.get("_meta", {})
+        if (not isinstance(name, str) or not isinstance(arguments, dict)
+                or not isinstance(context, dict) or not isinstance(meta, dict)):
             raise Refusal(INVALID_PARAMS, "invalid_params")
 
-        key = (header_key or context.get("idempotency_key") or "").strip()
+        supplied_keys = [value for value in (
+            header_key, context.get("idempotency_key"), meta.get("io.agentmiddleware/idempotency_key")
+        ) if value is not None and value != ""]
+        if not all(isinstance(value, str) for value in supplied_keys):
+            raise Refusal(INVALID_PARAMS, "invalid_idempotency_key")
+        key = supplied_keys[0].strip() if supplied_keys else ""
         if not key or len(key) > MAX_KEY_LENGTH:
             raise Refusal(INVALID_PARAMS, "invalid_idempotency_key")
-        if header_key and context.get("idempotency_key") and context["idempotency_key"].strip() != key:
-            raise Refusal(INVALID_PARAMS, "invalid_idempotency_key")
+        if any(value != supplied_keys[0] for value in supplied_keys[1:]):
+            raise Refusal(INVALID_PARAMS, "idempotency_key_mismatch")
 
         wallet_id = context.get("wallet_id")
         if not isinstance(wallet_id, str) or self.store.get_wallet(wallet_id) is None:
@@ -151,10 +158,32 @@ class Governor:
                 return op["envelope"], None  # completed or delivery_uncertain
 
             price = tool.credits_per_unit
-            self._check_permit(permit_id, wallet_id=wallet_id, tool=name, price=price)
-            wallet = self.store.get_wallet(wallet_id)
-            if Decimal(wallet["balance"]) < price:
-                raise Refusal(DENIED, "insufficient_funds")
+            try:
+                self._check_permit(permit_id, wallet_id=wallet_id, tool=name, price=price)
+                wallet = self.store.get_wallet(wallet_id)
+                if Decimal(wallet["balance"]) < price:
+                    raise Refusal(DENIED, "insufficient_funds")
+            except Refusal as refusal:
+                # A valid wallet's policy decision is terminal for this key.
+                # No charge, permit spend or tool dispatch occurs.
+                if not isinstance(permit_id, str) or not permit_id:
+                    raise
+                op = {
+                    "wallet_id": wallet_id,
+                    "idempotency_key": key,
+                    "tool": name,
+                    "request_hash": request_hash,
+                    "permit_id": permit_id,
+                    "credits": "0",
+                    "ledger_entry_id": "",
+                }
+                self.store.insert_operation(**op)
+                receipt = self.write_receipt(
+                    op, outcome=refusal.message, charged=Decimal(0), key_id=caller["key_id"]
+                )
+                envelope = rpc_error(None, refusal.code, refusal.message, {"receipt": receipt})
+                self.store.finish_operation(wallet_id, key, COMPLETED, envelope)
+                return envelope, None
 
             entry_id = self.store.move(wallet_id, -price, "charge", f"charge: {name}", key)
             self.store.add_permit_spend(permit_id, price)

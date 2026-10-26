@@ -404,6 +404,7 @@ class AgentMiddlewareClient:
                     "permit_id": permit_id,
                     "idempotency_key": key,
                 },
+                "_meta": {"io.agentmiddleware/idempotency_key": key},
             },
         }
         envelope = await self._request_json(
